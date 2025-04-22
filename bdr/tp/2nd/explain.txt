@@ -1,0 +1,162 @@
+SET statement_timeout = 0;
+SET lock_timeout = 0;
+SET idle_in_transaction_session_timeout = 0;
+Ces commandes désactivent certains délais d'attente pour éviter que les requêtes longues ne soient interrompues.
+
+sql
+Copy
+Edit
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = on;
+Définit l'encodage des caractères à UTF-8.
+
+Active le standard SQL pour les chaînes (utile pour éviter des comportements bizarres avec les apostrophes, par exemple).
+
+sql
+Copy
+Edit
+SELECT pg_catalog.set_config('search_path', '', false);
+Supprime tous les chemins de recherche par défaut pour éviter des confusions avec d'autres schémas (on force à bosser dans le bon schéma).
+
+sql
+Copy
+Edit
+SET check_function_bodies = false;
+SET xmloption = content;
+SET client_min_messages = notice;
+SET row_security = off;
+Désactive la vérification des corps de fonctions lors de leur création (utile quand les objets qu'elles utilisent ne sont pas encore créés).
+
+Définit comment le XML est traité.
+
+Réduit la verbosité des messages affichés par PostgreSQL.
+
+Désactive la sécurité par ligne (pas utile ici mais peut être pour certains cas d’usage avancés).
+
+🧱 Création du schéma et des tables
+sql
+Copy
+Edit
+DROP SCHEMA IF EXISTS crous CASCADE;
+CREATE SCHEMA crous;
+SET schema 'crous';
+Supprime le schéma crous s’il existe (et tout ce qu’il contient).
+
+Crée un nouveau schéma crous.
+
+Dit à PostgreSQL d’utiliser ce schéma par défaut.
+
+📋 Table Tarif
+sql
+Copy
+Edit
+CREATE TABLE Tarif(...);
+Crée une table des tarifs possibles pour les repas.
+
+tarif_repas doit être ≥ 0.
+
+Les insert into suivants insèrent 4 tarifs différents.
+
+👤 Table Personne
+sql
+Copy
+Edit
+CREATE TABLE Personne(...);
+Chaque personne a un nom, prénom, tarif associé, solde, et une indication s’il possède une carte (possede_carte, booléen encodé en 0/1).
+
+Les insert suivants ajoutent quelques personnes célèbres avec un tarif et un solde.
+
+💳 Table CarteMS
+sql
+Copy
+Edit
+CREATE TABLE CarteMS(...);
+Représente les cartes (type CROUS).
+
+Liée à une personne (proprietaire).
+
+Attribut activee : booléen (0 ou 1).
+
+Les insert suivants ajoutent des cartes à certaines personnes. Newton a deux cartes (dont une désactivée), d'autres une seule, parfois désactivée.
+
+🔄 Mise à jour du champ possede_carte
+sql
+Copy
+Edit
+UPDATE personne
+SET possede_carte = (SELECT COALESCE(SUM(activee), 0) FROM cartems WHERE proprietaire = id_personne);
+Calcule le nombre de cartes actives pour chaque personne et met à jour possede_carte en conséquence.
+
+🍽️ Table Consommation
+sql
+Copy
+Edit
+CREATE TABLE Consommation(...);
+Représente une consommation de repas avec :
+
+l’identifiant de carte utilisée,
+
+le moment,
+
+le montant payé.
+
+Le montant est calculé automatiquement par un trigger plus tard.
+
+Les insert suivants ajoutent quelques consommations fictives.
+
+🔁 Trigger : gestion automatique de possede_carte
+sql
+Copy
+Edit
+CREATE FUNCTION maj_possede_carte()
+Fonction déclenchée après insertion ou mise à jour sur CarteMS.
+
+Compte les cartes actives d’un utilisateur et met à jour possede_carte.
+
+Lève une exception si une personne a plus d’une carte active.
+
+sql
+Copy
+Edit
+CREATE TRIGGER trigger_insert_cartems ...
+CREATE TRIGGER trigger_update_cartems ...
+Lie la fonction aux événements d'insertion et de mise à jour sur la table CarteMS.
+
+🛡️ Trigger : validation des consommations
+sql
+Copy
+Edit
+CREATE FUNCTION conso_valide()
+Déclenchée avant l’insertion dans la table Consommation.
+
+Vérifie :
+
+que la carte est active ;
+
+que le solde est suffisant ;
+
+Si tout est OK :
+
+Déduit le montant du solde de la personne ;
+
+Insère le montant correspondant au tarif.
+
+📊 Fonction afficher_conso
+sql
+Copy
+Edit
+CREATE FUNCTION afficher_conso(start_, end_, id)
+Affiche la consommation mensuelle d’une personne donnée entre deux dates.
+
+Utilise generate_series() pour générer les mois entre start_ et end_.
+
+Pour chaque mois, affiche le total des consommations.
+
+Renvoie true (t) si la personne a au moins une carte active, false (f) sinon.
+
+🔎 Exemples de tests
+Des requêtes de test à la fin montrent :
+
+Comment les triggers réagissent (erreurs si carte désactivée ou solde insuffisant).
+
+Comment la fonction afficher_conso affiche les infos par mois.
